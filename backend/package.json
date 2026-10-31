@@ -1,31 +1,21 @@
 {
   "name": "banana-escape-room",
   "version": "1.0.0",
-  "description": "A web-based escape room game where players solve visual security challenges to unlock doors and escape stages",
+  "private": true,
   "main": "src/server.js",
-"scripts": {
-  "start": "node src/server.js",
-  "dev": "nodemon src/server.js"
-},  
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/RitikaMaharjan/banana-escape-quest.git"
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/RitikaMaharjan/banana-escape-quest/issues"
-  },
-  "homepage": "https://github.com/RitikaMaharjan/banana-escape-quest#readme",
   "dependencies": {
-    "bcrypt": "^6.0.0",
-    "better-sqlite3": "^13.0.3",
-    "dotenv": "^18.0.8",
-    "express": "^5.3.0",
-    "express-session": "^1.19.0"
+    "bcrypt": "^5.1.1",
+    "better-sqlite3": "^11.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.5.1",
+    "express-session": "^1.18.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "nodemon": "^3.1.0"
   }
 }
