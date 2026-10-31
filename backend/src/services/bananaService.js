@@ -1,3 +1,6 @@
+// Interoperability: calls the third-party Banana API over HTTPS and reads its JSON.
+// API documentation: https://marcconrad.com/uob/banana/doc.php
+
 const config = require('../config');
 
 const TIMEOUT_MS = 5000;
