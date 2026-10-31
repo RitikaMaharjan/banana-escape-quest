@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Banana Escape Room - Log in</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <main class="game">
+    <header>
+      <h1>Banana Escape Room</h1>
+      <p class="subtitle">Log in or create an account to play.</p>
+    </header>
+
+    <section class="card">
+      <form id="authForm" class="auth-form">
+        <label for="username">Username</label>
+        <input id="username" class="field" type="text" autocomplete="username" required>
+
+        <label for="password">Password</label>
+        <input id="password" class="field" type="password" autocomplete="current-password" required>
+
+        <div class="auth-buttons">
+          <button type="submit" id="loginBtn" class="primary">Log in</button>
+          <button type="button" id="registerBtn" class="secondary">Create account</button>
+        </div>
+      </form>
+    </section>
+
+    <p id="message" aria-live="polite"></p>
+  </main>
+
+  <script src="js/auth.js"></script>
+</body>
+</html>

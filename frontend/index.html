@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Banana Escape Room</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <main class="game">
+    <div class="userbar">
+      <span>Player: <strong id="username"></strong></span>
+      <div class="right">
+        <button id="muteBtn">Sound: on</button>
+        <button id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <header>
+      <h1>Banana Escape Room</h1>
+      <p class="subtitle">Solve each puzzle before the clock runs out.</p>
+    </header>
+
+    <section id="startCard" class="card center" hidden>
+      <h2 id="startTitle"></h2>
+      <p id="startText" class="muted"></p>
+      <div id="difficulty" class="segmented" role="group" aria-label="Difficulty"></div>
+      <p id="difficultyInfo" class="muted small"></p>
+      <button id="startBtn" class="primary"></button>
+    </section>
+
+    <div id="board" hidden>
+      <section class="stats">
+        <div><span class="label">Time</span><strong id="timer">3:00</strong></div>
+        <div><span class="label">Locks</span><strong id="progress"></strong></div>
+        <div><span class="label">Hints</span><strong id="hintsUsed">0</strong></div>
+        <div><span class="label">Mistakes</span><strong id="wrongCount">0</strong></div>
+        <div><span class="label">Streak</span><strong id="streak">0</strong></div>
+      </section>
+
+      <section class="card">
+        <div class="progress-bar"><div id="progressFill"></div></div>
+        <div id="locks"></div>
+        <p class="muted small center">Tip: press 1, 2 or 3 to pick a lock.</p>
+      </section>
+
+      <section id="puzzleArea" class="card" hidden>
+        <h2 id="puzzleTitle"></h2>
+        <img id="puzzleImage" alt="Puzzle: find the missing digit">
+        <div class="answer-row">
+          <input id="answerInput" type="number" min="0" max="9" placeholder="Missing digit">
+          <button id="submitBtn">Submit</button>
+        </div>
+        <div class="hint-row">
+          <span id="attempts" class="muted small"></span>
+          <button id="hintBtn" class="secondary small-btn">Hint (-100 pts)</button>
+        </div>
+        <p id="hintText" class="hint"></p>
+      </section>
+
+      <button id="resetBtn">Restart run</button>
+    </div>
+
+    <p id="message" aria-live="polite"></p>
+
+    <section class="card">
+      <h2 class="section-title">Leaderboard</h2>
+      <ol id="leaderboard" class="leaderboard"></ol>
+    </section>
+  </main>
+
+  <script src="js/game.js"></script>
+</body>
+</html>
