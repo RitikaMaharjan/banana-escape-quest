@@ -1,6 +1,6 @@
 // Browser side of the game. The server decides everything that matters
 // (timer, answers, score); this file only displays state and sends events.
-// AI-assisted (Claude, Anthropic): timer, hints, shortcuts, leaderboard, difficulty, sound and confetti were added with AI help.
+// AI-assisted (Claude, Anthropic): timer, hints, sound and leaderboard UI were added with AI help.
 
 const $ = (id) => document.getElementById(id);
 const locksEl = $('locks');
@@ -10,22 +10,12 @@ const puzzleArea = $('puzzleArea');
 const answerInput = $('answerInput');
 const message = $('message');
 
-// Cosmetic lock names and the short story line shown when each one opens.
-const LOCKS = [
-  { name: 'Vault door', story: 'The vault door swings open and a cold draft rushes in.' },
-  { name: 'Old safe', story: 'Click! Inside the safe is a rusty key. One lock to go.' },
-  { name: 'Secret hatch', story: 'The hatch drops open and daylight pours in.' },
-];
-const lockName = (id) => (LOCKS[id - 1] ? LOCKS[id - 1].name : `Lock ${id}`);
-
 let state = null;
 let activeLock = null;
 let deadline = 0;
 let timerId = null;
-let lastTickSecond = null;
-let level = 'normal';
 
-// ---- Sound (Web Audio API, no files needed) and confetti ----
+// ---- Sound: short beeps made with the Web Audio API (no sound files needed) ----
 let audioCtx = null;
 let muted = false;
 try {
@@ -51,7 +41,6 @@ const SOUNDS = {
   correct: (t) => { tone(523, t, 0.12); tone(784, t + 0.12, 0.2); },
   wrong: (t) => tone(150, t, 0.25, 'sawtooth'),
   hint: (t) => tone(660, t, 0.15, 'triangle'),
-  tick: (t) => tone(880, t, 0.05, 'square'),
   win: (t) => [523, 659, 784, 1047].forEach((f, i) => tone(f, t + i * 0.14, 0.25)),
   lose: (t) => { tone(300, t, 0.2, 'triangle'); tone(200, t + 0.2, 0.35, 'triangle'); },
 };
@@ -67,21 +56,7 @@ function play(name) {
   }
 }
 
-function confetti() {
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const colors = ['#f5c518', '#4caf6a', '#e5645a', '#f4ecd8'];
-  for (let i = 0; i < 70; i++) {
-    const piece = document.createElement('i');
-    piece.className = 'confetti';
-    piece.style.left = `${Math.random() * 100}vw`;
-    piece.style.background = colors[i % colors.length];
-    piece.style.animationDelay = `${Math.random() * 0.8}s`;
-    piece.style.animationDuration = `${2 + Math.random() * 1.5}s`;
-    document.body.appendChild(piece);
-    setTimeout(() => piece.remove(), 4500);
-  }
-}
-
+// ---- Helpers ----
 function setMessage(text, kind) {
   message.textContent = text;
   message.className = kind || '';
@@ -102,6 +77,10 @@ const post = (path, body) => api(path, {
   body: JSON.stringify(body || {}),
 });
 
+function networkError(err) {
+  if (err.message !== 'Not logged in') setMessage('Could not reach the server.', 'error');
+}
+
 function formatClock(ms) {
   const s = Math.max(0, Math.ceil(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -112,12 +91,6 @@ function tick() {
   const left = deadline - Date.now();
   $('timer').textContent = formatClock(left);
   $('timer').classList.toggle('low', left <= 30000);
-
-  const sec = Math.ceil(left / 1000);
-  if (sec > 0 && sec <= 10 && sec !== lastTickSecond) {
-    lastTickSecond = sec;
-    play('tick');
-  }
   if (left <= 0) {
     stopTimer();
     refreshState(); // let the server confirm the timeout
@@ -126,7 +99,6 @@ function tick() {
 
 function startTimer() {
   stopTimer();
-  lastTickSecond = null;
   tick();
   timerId = setInterval(tick, 250);
 }
@@ -138,40 +110,22 @@ function stopTimer() {
 
 // ---- Rendering ----
 function renderStartCard(s) {
-  const solved = s.solved.length;
   const texts = {
-    won: ['You escaped!', `Score ${s.score} on ${s.difficulties[s.difficulty].label} in ${(s.timeTakenMs / 1000).toFixed(1)}s. Can you beat it?`, 'Play again'],
-    timeout: ["Time's up!", `You opened ${solved} of ${s.totalLocks} locks.`, 'Try again'],
+    won: ['You escaped!', `Score ${s.score} in ${(s.timeTakenMs / 1000).toFixed(1)} seconds. Can you beat it?`, 'Play again'],
+    timeout: ["Time's up!", `You opened ${s.solved.length} of ${s.totalLocks} locks.`, 'Try again'],
   };
   const [title, text, button] = texts[s.status] || [
     'Ready to escape?',
-    `Open ${s.totalLocks} locks before the clock runs out. Mistakes and hints cost points; streaks earn bonus points.`,
+    `Open ${s.totalLocks} locks in ${formatClock(s.timeLimitMs)}. Mistakes and hints cost points.`,
     'Start',
   ];
   $('startTitle').textContent = title;
   $('startText').textContent = text;
   $('startBtn').textContent = button;
-  renderDifficulty(s);
 }
 
-function renderDifficulty(s) {
-  const box = $('difficulty');
-  box.replaceChildren();
-  Object.entries(s.difficulties).forEach(([key, cfg]) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'secondary small-btn';
-    if (key === level) btn.classList.add('selected');
-    btn.textContent = cfg.label;
-    btn.addEventListener('click', () => {
-      level = key;
-      renderDifficulty(s);
-    });
-    box.appendChild(btn);
-  });
-  const c = s.difficulties[level];
-  $('difficultyInfo').textContent =
-    `${formatClock(c.timeMs)} on the clock, ${c.attempts} attempts and ${c.hints} hints per lock, score x${c.multiplier}`;
+function renderUsed(s) {
+  $('usedInfo').textContent = `Mistakes: ${s.wrong}  |  Hints used: ${s.hints}`;
 }
 
 function renderLocks() {
@@ -182,16 +136,14 @@ function renderLocks() {
     btn.className = 'lock';
     if (open) btn.classList.add('open');
     if (id === activeLock) btn.classList.add('active');
-    btn.textContent = open ? `${lockName(id)}: open` : `${lockName(id)}: locked`;
+    btn.textContent = open ? `Lock ${id}: open` : `Lock ${id}`;
     btn.disabled = open;
     btn.addEventListener('click', () => openLock(id));
     locksEl.appendChild(btn);
   }
   $('progress').textContent = `${state.solved.length} / ${state.totalLocks}`;
   $('progressFill').style.width = `${(state.solved.length / state.totalLocks) * 100}%`;
-  $('hintsUsed').textContent = state.hints;
-  $('wrongCount').textContent = state.wrong;
-  $('streak').textContent = state.streak;
+  renderUsed(state);
 }
 
 function applyState(s) {
@@ -206,20 +158,22 @@ function applyState(s) {
     deadline = Date.now() + s.remainingMs;
     startTimer();
     renderLocks();
-  } else {
-    stopTimer();
-    activeLock = null;
-    puzzleArea.hidden = true;
-    renderStartCard(s);
-    if (wasActive) {
-      loadLeaderboard();
-      setMessage(s.status === 'won' ? 'You escaped! All locks are open.' : "Time's up!", s.status === 'won' ? 'success' : 'error');
-      if (s.status === 'won') {
-        play('win');
-        confetti();
-      } else {
-        play('lose');
-      }
+    return;
+  }
+
+  stopTimer();
+  activeLock = null;
+  puzzleArea.hidden = true;
+  renderStartCard(s);
+
+  if (wasActive) {
+    loadLeaderboard();
+    if (s.status === 'won') {
+      play('win');
+      setMessage('You escaped! All locks are open.', 'success');
+    } else {
+      play('lose');
+      setMessage("Time's up!", 'error');
     }
   }
 }
@@ -228,7 +182,7 @@ async function refreshState() {
   try {
     applyState((await api('/api/game/state')).data);
   } catch (err) {
-    if (err.message !== 'Not logged in') setMessage('Could not reach the server.', 'error');
+    networkError(err);
   }
 }
 
@@ -237,16 +191,18 @@ async function loadLeaderboard() {
     const { data } = await api('/api/game/leaderboard');
     const list = $('leaderboard');
     list.replaceChildren();
+
     if (data.scores.length === 0) {
       const li = document.createElement('li');
       li.className = 'muted';
       li.textContent = 'No escapes yet. Be the first!';
       list.appendChild(li);
     }
+
     data.scores.forEach((row) => {
       const li = document.createElement('li');
       li.innerHTML = '<span class="name"></span><span class="pts"></span><span class="muted"></span>';
-      li.children[0].textContent = `${row.username} (${row.difficulty})`;
+      li.children[0].textContent = row.username;
       li.children[1].textContent = `${row.score} pts`;
       li.children[2].textContent = `${(row.time_ms / 1000).toFixed(1)}s`;
       list.appendChild(li);
@@ -259,11 +215,11 @@ async function loadLeaderboard() {
 // ---- Game actions ----
 async function startGame() {
   try {
-    const { data } = await post('/api/game/start', { difficulty: level });
+    const { data } = await post('/api/game/start');
     setMessage('Pick a lock to begin. The clock is running!', 'info');
     applyState(data);
   } catch (err) {
-    if (err.message !== 'Not logged in') setMessage('Could not reach the server.', 'error');
+    networkError(err);
   }
 }
 
@@ -277,7 +233,7 @@ async function openLock(id) {
       return;
     }
     activeLock = id;
-    $('puzzleTitle').textContent = lockName(id);
+    $('puzzleTitle').textContent = `Lock ${id}`;
     $('puzzleImage').src = data.question;
     $('attempts').textContent = `Attempts left: ${data.attemptsLeft}`;
     $('hintText').textContent = '';
@@ -288,7 +244,7 @@ async function openLock(id) {
     setMessage('Find the missing digit and submit your answer.', 'info');
     renderLocks();
   } catch (err) {
-    if (err.message !== 'Not logged in') setMessage('Could not reach the server.', 'error');
+    networkError(err);
   }
 }
 
@@ -304,16 +260,10 @@ async function useHint() {
     $('hintText').textContent = data.hint;
     $('hintBtn').disabled = data.hintsLeft === 0;
     state = { ...state, hints: data.hints };
-    $('hintsUsed').textContent = data.hints;
+    renderUsed(state);
   } catch (err) {
-    if (err.message !== 'Not logged in') setMessage('Could not reach the server.', 'error');
+    networkError(err);
   }
-}
-
-function shake() {
-  puzzleArea.classList.remove('shake');
-  void puzzleArea.offsetWidth; // restart the animation
-  puzzleArea.classList.add('shake');
 }
 
 async function submitAnswer() {
@@ -342,30 +292,35 @@ async function submitAnswer() {
       applyState(data);
       if (data.status === 'active') {
         play('correct');
-        const streakNote = data.streak > 1 ? ` Streak x${data.streak}!` : '';
-        setMessage(`${LOCKS[lockId - 1] ? LOCKS[lockId - 1].story : 'The lock opens.'}${streakNote}`, 'success');
+        setMessage('Correct! The lock opens.', 'success');
       }
     } else if (data.jammed) {
       applyState(data);
-      shake();
       play('wrong');
       setMessage('Lock jammed! Here is a fresh puzzle.', 'error');
       openLock(lockId);
     } else {
       applyState(data);
-      shake();
       play('wrong');
       $('attempts').textContent = `Attempts left: ${data.attemptsLeft}`;
       answerInput.select();
       setMessage('Wrong answer. Try again.', 'error');
     }
   } catch (err) {
-    if (err.message !== 'Not logged in') setMessage('Could not reach the server.', 'error');
+    networkError(err);
   }
 }
 
 // ---- Events ----
 $('startBtn').addEventListener('click', startGame);
+$('resetBtn').addEventListener('click', startGame);
+$('submitBtn').addEventListener('click', submitAnswer);
+$('hintBtn').addEventListener('click', useHint);
+
+answerInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') submitAnswer();
+});
+
 $('muteBtn').addEventListener('click', () => {
   muted = !muted;
   $('muteBtn').textContent = muted ? 'Sound: off' : 'Sound: on';
@@ -373,23 +328,6 @@ $('muteBtn').addEventListener('click', () => {
     localStorage.setItem('muted', muted ? '1' : '0');
   } catch (err) {
     // Ignore storage problems.
-  }
-});
-$('resetBtn').addEventListener('click', startGame);
-$('submitBtn').addEventListener('click', submitAnswer);
-$('hintBtn').addEventListener('click', useHint);
-puzzleArea.addEventListener('animationend', () => puzzleArea.classList.remove('shake'));
-
-answerInput.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter') submitAnswer();
-});
-
-// Keyboard shortcut: 1, 2, 3 pick a lock (ignored while typing in the answer box).
-document.addEventListener('keydown', (event) => {
-  if (event.target === answerInput || board.hidden) return;
-  const id = Number(event.key);
-  if (Number.isInteger(id) && id >= 1 && id <= state.totalLocks && !state.solved.includes(id)) {
-    openLock(id);
   }
 });
 
@@ -409,7 +347,7 @@ async function init() {
     await refreshState();
     loadLeaderboard();
   } catch (err) {
-    if (err.message !== 'Not logged in') setMessage('Could not reach the server.', 'error');
+    networkError(err);
   }
 }
 
