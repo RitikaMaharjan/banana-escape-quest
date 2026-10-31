@@ -27,24 +27,19 @@
     <section id="startCard" class="card center" hidden>
       <h2 id="startTitle"></h2>
       <p id="startText" class="muted"></p>
-      <div id="difficulty" class="segmented" role="group" aria-label="Difficulty"></div>
-      <p id="difficultyInfo" class="muted small"></p>
       <button id="startBtn" class="primary"></button>
     </section>
 
     <div id="board" hidden>
-      <section class="stats">
-        <div><span class="label">Time</span><strong id="timer">3:00</strong></div>
-        <div><span class="label">Locks</span><strong id="progress"></strong></div>
-        <div><span class="label">Hints</span><strong id="hintsUsed">0</strong></div>
-        <div><span class="label">Mistakes</span><strong id="wrongCount">0</strong></div>
-        <div><span class="label">Streak</span><strong id="streak">0</strong></div>
+      <section class="status-row">
+        <div><span class="label">Time left</span><strong id="timer">3:00</strong></div>
+        <div><span class="label">Locks open</span><strong id="progress">0 / 3</strong></div>
       </section>
 
       <section class="card">
         <div class="progress-bar"><div id="progressFill"></div></div>
         <div id="locks"></div>
-        <p class="muted small center">Tip: press 1, 2 or 3 to pick a lock.</p>
+        <p id="usedInfo" class="muted small center"></p>
       </section>
 
       <section id="puzzleArea" class="card" hidden>
@@ -61,7 +56,7 @@
         <p id="hintText" class="hint"></p>
       </section>
 
-      <button id="resetBtn">Restart run</button>
+      <button id="resetBtn">Restart</button>
     </div>
 
     <p id="message" aria-live="polite"></p>
