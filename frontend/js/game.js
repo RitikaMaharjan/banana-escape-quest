@@ -38,11 +38,11 @@ function tone(freq, at, dur, type = 'sine') {
 }
 
 const SOUNDS = {
-  correct: (t) => { tone(523, t, 0.12); tone(784, t + 0.12, 0.2); },
-  wrong: (t) => tone(150, t, 0.25, 'sawtooth'),
-  hint: (t) => tone(660, t, 0.15, 'triangle'),
-  win: (t) => [523, 659, 784, 1047].forEach((f, i) => tone(f, t + i * 0.14, 0.25)),
-  lose: (t) => { tone(300, t, 0.2, 'triangle'); tone(200, t + 0.2, 0.35, 'triangle'); },
+  correct: (t) => { tone(988, t, 0.08, 'square'); tone(1319, t + 0.08, 0.25, 'square'); },
+  wrong: (t) => { tone(200, t, 0.12, 'square'); tone(150, t + 0.12, 0.2, 'square'); },
+  hint: (t) => { tone(740, t, 0.08, 'square'); tone(880, t + 0.08, 0.1, 'square'); },
+  win: (t) => [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(f, t + i * 0.1, 0.15, 'square')),
+  lose: (t) => [440, 370, 311, 262].forEach((f, i) => tone(f, t + i * 0.18, 0.2, 'square')),
 };
 
 function play(name) {
