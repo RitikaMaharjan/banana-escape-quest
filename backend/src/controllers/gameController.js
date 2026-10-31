@@ -6,35 +6,24 @@ const { fetchPuzzle } = require('../services/bananaService');
 const db = require('../db/database');
 
 const TOTAL_LOCKS = 3;
-const STREAK_BONUS = 25; // bonus points = 25 x current streak, e.g. 25, 50, 75
-const MAX_FETCH_TRIES = 5; // tries to get a puzzle the player has not seen this run
-
-// attempts = wrong answers before a lock jams, hints = per lock, multiplier = score multiplier
-const DIFFICULTIES = {
-  easy: { label: 'Easy', timeMs: 5 * 60 * 1000, attempts: 7, hints: 3, multiplier: 0.8 },
-  normal: { label: 'Normal', timeMs: 3 * 60 * 1000, attempts: 5, hints: 2, multiplier: 1 },
-  hard: { label: 'Hard', timeMs: 2 * 60 * 1000, attempts: 3, hints: 1, multiplier: 1.5 },
-};
-const DEFAULT_LEVEL = 'normal';
-
-function cfgFor(run) {
-  return DIFFICULTIES[run.difficulty] || DIFFICULTIES[DEFAULT_LEVEL];
-}
+const TIME_LIMIT_MS = 3 * 60 * 1000; // 3 minutes to open every lock
+const MAX_ATTEMPTS = 5; // wrong answers before a lock jams and gets a new puzzle
+const MAX_HINTS = 2; // hints per lock
 
 const getSolved = db.prepare('SELECT lock_id FROM progress WHERE user_id = ? ORDER BY lock_id');
 const markSolved = db.prepare('INSERT OR IGNORE INTO progress (user_id, lock_id) VALUES (?, ?)');
 const clearProgress = db.prepare('DELETE FROM progress WHERE user_id = ?');
 
 const latestRun = db.prepare('SELECT * FROM runs WHERE user_id = ? ORDER BY id DESC LIMIT 1');
-const insertRun = db.prepare('INSERT INTO runs (user_id, started_at, difficulty) VALUES (?, ?, ?)');
+const insertRun = db.prepare('INSERT INTO runs (user_id, started_at) VALUES (?, ?)');
 const finishRun = db.prepare('UPDATE runs SET status = ?, finished_at = ?, score = ? WHERE id = ?');
-const addWrong = db.prepare('UPDATE runs SET wrong_answers = wrong_answers + 1, streak = 0 WHERE id = ?');
-const addCorrect = db.prepare('UPDATE runs SET streak = streak + 1, bonus = bonus + ? WHERE id = ?');
+const addWrong = db.prepare('UPDATE runs SET wrong_answers = wrong_answers + 1 WHERE id = ?');
 const addHint = db.prepare('UPDATE runs SET hints_used = hints_used + 1 WHERE id = ?');
 
+// Best finished run for each player, top 10.
 const topScores = db.prepare(`
-  SELECT username, score, time_ms, difficulty FROM (
-    SELECT u.username, r.score, r.difficulty, r.finished_at - r.started_at AS time_ms,
+  SELECT username, score, time_ms FROM (
+    SELECT u.username, r.score, r.finished_at - r.started_at AS time_ms,
            ROW_NUMBER() OVER (
              PARTITION BY r.user_id
              ORDER BY r.score DESC, r.finished_at - r.started_at ASC
@@ -50,42 +39,33 @@ const topScores = db.prepare(`
 // Returns the user's latest run, closing it as a timeout if the clock has run out.
 function loadRun(userId) {
   const run = latestRun.get(userId);
-  if (run && run.status === 'active' && Date.now() > run.started_at + cfgFor(run).timeMs) {
-    finishRun.run('timeout', run.started_at + cfgFor(run).timeMs, 0, run.id);
+  if (run && run.status === 'active' && Date.now() > run.started_at + TIME_LIMIT_MS) {
+    finishRun.run('timeout', run.started_at + TIME_LIMIT_MS, 0, run.id);
     return latestRun.get(userId);
   }
   return run;
 }
 
+// Faster and cleaner runs score higher.
 function calcScore(run, now) {
-  const cfg = cfgFor(run);
-  const remainingSec = Math.max(0, Math.floor((run.started_at + cfg.timeMs - now) / 1000));
-  const base = 500 + remainingSec * 5 + run.bonus - run.wrong_answers * 50 - run.hints_used * 100;
-  return Math.max(0, Math.round(base * cfg.multiplier));
+  const secondsLeft = Math.max(0, Math.floor((run.started_at + TIME_LIMIT_MS - now) / 1000));
+  return Math.max(0, 500 + secondsLeft * 5 - run.wrong_answers * 50 - run.hints_used * 100);
 }
 
 function publicState(userId) {
   const run = loadRun(userId);
-  const solved = getSolved.all(userId).map((row) => row.lock_id);
   const status = run ? run.status : 'idle';
-  const cfg = run ? cfgFor(run) : DIFFICULTIES[DEFAULT_LEVEL];
 
   return {
     totalLocks: TOTAL_LOCKS,
-    difficulties: DIFFICULTIES,
-    difficulty: run ? run.difficulty : DEFAULT_LEVEL,
-    timeLimitMs: cfg.timeMs,
-    maxAttempts: cfg.attempts,
-    maxHints: cfg.hints,
+    timeLimitMs: TIME_LIMIT_MS,
     status,
-    solved,
+    solved: getSolved.all(userId).map((row) => row.lock_id),
     wrong: run ? run.wrong_answers : 0,
     hints: run ? run.hints_used : 0,
-    streak: run ? run.streak : 0,
-    bonus: run ? run.bonus : 0,
-    remainingMs: status === 'active' ? Math.max(0, run.started_at + cfg.timeMs - Date.now()) : 0,
-    score: run && status === 'won' ? run.score : null,
-    timeTakenMs: run && status === 'won' ? run.finished_at - run.started_at : null,
+    remainingMs: status === 'active' ? Math.max(0, run.started_at + TIME_LIMIT_MS - Date.now()) : 0,
+    score: status === 'won' ? run.score : null,
+    timeTakenMs: status === 'won' ? run.finished_at - run.started_at : null,
   };
 }
 
@@ -115,12 +95,12 @@ function parsePuzzle(data) {
   return { question: data.question, solution };
 }
 
-// Asks the Banana API again (up to MAX_FETCH_TRIES) if it hands back a puzzle already used this run.
+// Asks the Banana API again (up to 5 times) if it returns a puzzle already used in this run.
 async function fetchFreshPuzzle(req) {
   if (!req.session.seen) req.session.seen = [];
 
   let puzzle = null;
-  for (let i = 0; i < MAX_FETCH_TRIES; i++) {
+  for (let i = 0; i < 5; i++) {
     puzzle = parsePuzzle(await fetchPuzzle());
     if (!puzzle) return null;
     if (!req.session.seen.includes(puzzle.question)) break;
@@ -158,17 +138,16 @@ function getLeaderboard(req, res) {
   res.json({ scores: topScores.all() });
 }
 
+// Starts a new run: clears old progress and starts the clock.
 function startRun(req, res) {
   const userId = req.session.userId;
   const run = loadRun(userId);
   if (run && run.status === 'active') finishRun.run('abandoned', Date.now(), 0, run.id);
 
-  const level = DIFFICULTIES[req.body && req.body.difficulty] ? req.body.difficulty : DEFAULT_LEVEL;
-
   clearProgress.run(userId);
   req.session.pending = {};
   req.session.seen = [];
-  insertRun.run(userId, Date.now(), level);
+  insertRun.run(userId, Date.now());
   res.status(201).json(publicState(userId));
 }
 
@@ -183,39 +162,30 @@ async function loadLockPuzzle(req, res) {
     }
 
     pendingFor(req)[ctx.id] = { solution: puzzle.solution, attempts: 0, hints: 0 };
-    const cfg = cfgFor(ctx.run);
-    res.json({ question: puzzle.question, attemptsLeft: cfg.attempts, hintsLeft: cfg.hints });
+    res.json({ question: puzzle.question, attemptsLeft: MAX_ATTEMPTS, hintsLeft: MAX_HINTS });
   } catch (err) {
     console.error('Puzzle error:', err.message);
     res.status(err.status || 500).json({ error: err.message });
   }
 }
 
-// Each hint narrows the answer down a bit more.
-function hintText(level, solution) {
-  if (level === 1) return `The missing digit is ${solution % 2 === 0 ? 'even' : 'odd'}.`;
-  if (level === 2) return `The missing digit is between ${solution <= 4 ? '0 and 4' : '5 and 9'}.`;
-  const options = [solution, (solution + 3) % 10, (solution + 6) % 10].sort((a, b) => a - b);
-  return `The missing digit is ${options[0]}, ${options[1]} or ${options[2]}.`;
-}
-
+// Hint 1 says odd or even, hint 2 gives a range. Each hint costs points.
 function hintLock(req, res) {
   const ctx = activeLockContext(req, res);
   if (!ctx) return;
 
   const puzzle = pendingFor(req)[ctx.id];
   if (!puzzle) return res.status(400).json({ error: "Load this lock's puzzle first" });
-  const maxHints = cfgFor(ctx.run).hints;
-  if (puzzle.hints >= maxHints) return res.status(400).json({ error: 'No hints left for this lock' });
+  if (puzzle.hints >= MAX_HINTS) return res.status(400).json({ error: 'No hints left for this lock' });
 
   puzzle.hints += 1;
   addHint.run(ctx.run.id);
 
-  res.json({
-    hint: hintText(puzzle.hints, puzzle.solution),
-    hintsLeft: maxHints - puzzle.hints,
-    ...publicState(req.session.userId),
-  });
+  const hint = puzzle.hints === 1
+    ? `The missing digit is ${puzzle.solution % 2 === 0 ? 'even' : 'odd'}.`
+    : `The missing digit is between ${puzzle.solution <= 4 ? '0 and 4' : '5 and 9'}.`;
+
+  res.json({ hint, hintsLeft: MAX_HINTS - puzzle.hints, ...publicState(req.session.userId) });
 }
 
 function answerLock(req, res) {
@@ -236,11 +206,11 @@ function answerLock(req, res) {
   if (value === puzzle.solution) {
     markSolved.run(userId, ctx.id);
     delete pendingFor(req)[ctx.id];
-    addCorrect.run(STREAK_BONUS * (ctx.run.streak + 1), ctx.run.id);
 
+    // All locks open: the run is won and the score is saved.
     if (getSolved.all(userId).length === TOTAL_LOCKS) {
       const now = Date.now();
-      finishRun.run('won', now, calcScore(latestRun.get(userId), now), ctx.run.id);
+      finishRun.run('won', now, calcScore(ctx.run, now), ctx.run.id);
     }
     return res.json({ correct: true, ...publicState(userId) });
   }
@@ -249,14 +219,13 @@ function answerLock(req, res) {
   puzzle.attempts += 1;
 
   // Too many wrong guesses: the lock jams and the puzzle is thrown away.
-  const maxAttempts = cfgFor(ctx.run).attempts;
-  const jammed = puzzle.attempts >= maxAttempts;
+  const jammed = puzzle.attempts >= MAX_ATTEMPTS;
   if (jammed) delete pendingFor(req)[ctx.id];
 
   res.json({
     correct: false,
     jammed,
-    attemptsLeft: maxAttempts - puzzle.attempts,
+    attemptsLeft: MAX_ATTEMPTS - puzzle.attempts,
     ...publicState(userId),
   });
 }
